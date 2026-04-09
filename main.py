@@ -1,12 +1,14 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from transformers import pipeline
+import requests
+import os
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 app = FastAPI()
 
-# ✅ Load models once
-toxic_model = pipeline("text-classification", model="unitary/toxic-bert")
-hate_model = pipeline("text-classification", model="Hate-speech-CNERG/bert-base-uncased-hatexplain")
+HEADERS = {
+    "Authorization": f"Bearer {HF_TOKEN}"
+}
 
 # 🔥 Hinglish abuse words
 BAD_WORDS = {
@@ -16,21 +18,26 @@ BAD_WORDS = {
     "lodu", "chutiye", "madarchode"
 }
 
-# 🧠 Request schema
 class TextInput(BaseModel):
     text: str
 
-# 🔍 Custom abuse check
-def has_custom_abuse(text: str) -> bool:
-    text = text.lower()
-    return any(word in text for word in BAD_WORDS)
 
-# 🧠 Core moderation logic
+# 🔍 API call function
+def query_model(model, text):
+    url = f"https://api-inference.huggingface.co/models/{model}"
+    response = requests.post(url, headers=HEADERS, json={"inputs": text})
+    return response.json()
+
+
+def has_custom_abuse(text: str) -> bool:
+    return any(word in text.lower() for word in BAD_WORDS)
+
+
 def smart_moderation(text: str):
 
     text_lower = text.lower()
 
-    # 🔴 1. Custom abuse → immediate block
+    # 🔴 Custom abuse
     if has_custom_abuse(text):
         return {
             "decision": "block",
@@ -38,35 +45,31 @@ def smart_moderation(text: str):
             "reason": "custom abusive language"
         }
 
-    # 🟡 2. Model predictions
-    toxic_output = toxic_model(text)[0]
-    toxic_score = float(toxic_output["score"])
+    # 🟡 Call HuggingFace models
+    toxic_response = query_model("unitary/toxic-bert", text)
+    hate_response = query_model("Hate-speech-CNERG/bert-base-uncased-hatexplain", text)
 
-    hate_output = hate_model(text)[0]
-    hate_label = hate_output["label"].lower()
-    hate_score = float(hate_output["score"])
+    try:
+        toxic_score = toxic_response[0]["score"]
+        hate_label = hate_response[0]["label"].lower()
+        hate_score = hate_response[0]["score"]
+    except:
+        return {"decision": "allow", "severity": "none"}
 
-    # 🧠 3. Noise filtering (VERY IMPORTANT)
-    MIN_THRESHOLD = 0.2
+    # 🧠 Noise filter
+    if toxic_score < 0.2 and hate_score < 0.2:
+        return {"decision": "allow", "severity": "none"}
 
-    if toxic_score < MIN_THRESHOLD and hate_score < MIN_THRESHOLD:
-        return {
-            "decision": "allow",
-            "severity": "none"
-        }
-
-    # 🔴 4. Strong toxicity → BLOCK
+    # 🔴 Strong toxicity
     if toxic_score > 0.9:
         return {
             "decision": "block",
             "severity": "high",
             "reason": "toxic language",
-            "scores": {
-                "toxicity": toxic_score
-            }
+            "scores": {"toxicity": toxic_score}
         }
 
-    # 🔴 5. Hate speech (controlled, avoid false positives)
+    # 🔴 Hate speech (controlled)
     if hate_label == "hate" and hate_score > 0.8 and toxic_score > 0.5:
         return {
             "decision": "block",
@@ -78,55 +81,32 @@ def smart_moderation(text: str):
             }
         }
 
-    # 🔴 6. Harassment detection
-    if text_lower.count("you") >= 3 and toxic_score > 0.7:
-        return {
-            "decision": "block",
-            "severity": "high",
-            "reason": "harassment detected"
-        }
-
-    # 🟠 7. Medium toxicity → WARN
+    # 🟠 Medium warning
     if toxic_score > 0.7:
         return {
             "decision": "warn",
             "severity": "medium",
-            "reason": "potentially harmful language",
-            "scores": {
-                "toxicity": toxic_score
-            }
+            "reason": "harmful language",
+            "scores": {"toxicity": toxic_score}
         }
 
-    # 🟡 8. Mild toxicity → SOFT WARN
+    # 🟡 Soft warning
     if toxic_score > 0.4:
         return {
             "decision": "warn",
             "severity": "low",
             "reason": "mild negative tone",
-            "scores": {
-                "toxicity": toxic_score
-            }
+            "scores": {"toxicity": toxic_score}
         }
 
-    # 🟢 9. Safe content
-    return {
-        "decision": "allow",
-        "severity": "none"
-    }
+    return {"decision": "allow", "severity": "none"}
 
-# ✅ Health route
+
 @app.get("/")
 def home():
     return {"message": "AI Moderation API is running 🚀"}
 
-# ✅ API endpoint
+
 @app.post("/moderate")
 def moderate(data: TextInput):
-    try:
-        return smart_moderation(data.text)
-    except Exception as e:
-        return {
-            "decision": "allow",  # fail-safe
-            "severity": "none",
-            "error": str(e)
-        }
+    return smart_moderation(data.text)
