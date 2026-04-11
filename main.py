@@ -6,39 +6,35 @@ import re
 
 app = FastAPI()
 
-# HuggingFace Token
+# 🔑 HuggingFace Token
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 HEADERS = {
     "Authorization": f"Bearer {HF_TOKEN}"
 }
 
+# Hinglish + English abuse words
 BAD_WORDS = {
-    # Hinglish (your existing)
+    # Hinglish
     "chutiya", "madarchod", "bhosdike", "gandu", "bc", "mc",
     "randi", "harami", "loda", "lund", "chodu", "bhenchod",
     "behenchod", "gand", "chut", "bhosda", "haramzada",
     "lodu", "chutiye", "madarchode",
 
-    # Core English abuse (strong)
+    # English
     "fuck", "fucker", "motherfucker", "mf",
     "bitch", "bastard", "asshole", "ass",
     "dick", "dickhead", "prick",
     "shit", "bullshit", "shithead",
 
-    # Insults (mental harm)
     "idiot", "moron", "stupid", "dumb",
     "loser", "jerk", "retard", "imbecile",
 
-    # Harassment words
     "slut", "whore", "skank",
     "trash", "garbage", "pathetic",
 
-    # Aggressive tone
-    "screw you", "fuck off", "shut up",
-    "get lost", "get out",
+    "fuck off", "shut up", "get lost", "get out",
 
-    # Variations
     "fucking", "fucked", "bitches", "bastards",
     "idiotic", "stupidity"
 }
@@ -87,10 +83,11 @@ def query_model(model, text):
         return []
 
 
-# Custom abuse detection
+# Custom abuse detection 
 def has_custom_abuse(text: str) -> bool:
     text = clean_text(text)
 
+    # Allow self-expression
     if text.startswith("i am") or text.startswith("i feel"):
         return False
 
@@ -100,15 +97,11 @@ def has_custom_abuse(text: str) -> bool:
 
     return False
 
-# Harmful phrase detection
-def has_custom_abuse(text: str) -> bool:
-    text = clean_text(text)
 
-    for word in BAD_WORDS:
-        if word in text:
-            return True
-
-    return False
+# Harmful phrase detection 
+def has_harmful_phrase(text: str) -> bool:
+    text = text.lower()
+    return any(phrase in text for phrase in HARMFUL_PHRASES)
 
 
 # Pattern-based detection
@@ -134,7 +127,7 @@ def detect_harmful_patterns(text: str) -> bool:
 # MAIN LOGIC
 def smart_moderation(text: str):
 
-    # 1. Custom abuse (highest priority)
+    # 1. Custom abuse
     if has_custom_abuse(text):
         return {
             "decision": "block",
@@ -158,7 +151,7 @@ def smart_moderation(text: str):
         return {"decision": "allow", "severity": "none"}
 
     try:
-        # FIXED MULTI-LABEL PARSING
+        # Multi-label parsing 
         toxic_score = 0.0
 
         for item in toxic_response:
@@ -174,7 +167,7 @@ def smart_moderation(text: str):
     except:
         return {"decision": "allow", "severity": "none"}
 
-    # Noise filter (allow emotional expression)
+    # Allow emotional expression
     if toxic_score < 0.2 and hate_score < 0.2:
         return {"decision": "allow", "severity": "none"}
 
@@ -199,7 +192,7 @@ def smart_moderation(text: str):
             }
         }
 
-    # Medium harmful → BLOCK (mental health app)
+    # Medium harmful → BLOCK
     if toxic_score > 0.6:
         return {
             "decision": "block",
@@ -215,7 +208,7 @@ def smart_moderation(text: str):
 # Routes
 @app.get("/")
 def home():
-    return {"message": "AI Moderation API is running 🚀"}
+    return {"message": "AI Moderation API is running smoothly!"}
 
 
 @app.post("/moderate")
