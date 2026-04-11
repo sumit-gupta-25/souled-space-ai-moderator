@@ -13,12 +13,34 @@ HEADERS = {
     "Authorization": f"Bearer {HF_TOKEN}"
 }
 
-# Hinglish abuse words
 BAD_WORDS = {
+    # Hinglish (your existing)
     "chutiya", "madarchod", "bhosdike", "gandu", "bc", "mc",
     "randi", "harami", "loda", "lund", "chodu", "bhenchod",
     "behenchod", "gand", "chut", "bhosda", "haramzada",
-    "lodu", "chutiye", "madarchode"
+    "lodu", "chutiye", "madarchode",
+
+    # Core English abuse (strong)
+    "fuck", "fucker", "motherfucker", "mf",
+    "bitch", "bastard", "asshole", "ass",
+    "dick", "dickhead", "prick",
+    "shit", "bullshit", "shithead",
+
+    # Insults (mental harm)
+    "idiot", "moron", "stupid", "dumb",
+    "loser", "jerk", "retard", "imbecile",
+
+    # Harassment words
+    "slut", "whore", "skank",
+    "trash", "garbage", "pathetic",
+
+    # Aggressive tone
+    "screw you", "fuck off", "shut up",
+    "get lost", "get out",
+
+    # Variations
+    "fucking", "fucked", "bitches", "bastards",
+    "idiotic", "stupidity"
 }
 
 # Mental harm phrases
@@ -67,14 +89,26 @@ def query_model(model, text):
 
 # Custom abuse detection
 def has_custom_abuse(text: str) -> bool:
-    words = clean_text(text).split()
-    return any(word in BAD_WORDS for word in words)
+    text = clean_text(text)
 
+    if text.startswith("i am") or text.startswith("i feel"):
+        return False
+
+    for word in BAD_WORDS:
+        if word in text:
+            return True
+
+    return False
 
 # Harmful phrase detection
-def has_harmful_phrase(text: str) -> bool:
-    text = text.lower()
-    return any(phrase in text for phrase in HARMFUL_PHRASES)
+def has_custom_abuse(text: str) -> bool:
+    text = clean_text(text)
+
+    for word in BAD_WORDS:
+        if word in text:
+            return True
+
+    return False
 
 
 # Pattern-based detection
